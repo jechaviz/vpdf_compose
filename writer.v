@@ -1,0 +1,133 @@
+module vpdf_compose
+
+pub fn new_document() Document {
+	return Document{}
+}
+
+pub fn (doc Document) page_count() int {
+	return doc.pages.len
+}
+
+pub fn (doc Document) render() string {
+	pages := if doc.pages.len == 0 {
+		[
+			PdfPage{
+				kind:          'text'
+				lines:         [
+					TextLine{
+						text: 'Empty PDF document'
+						size: 14
+						bold: true
+					},
+				]
+				margin_points: 28
+			},
+		]
+	} else {
+		doc.pages
+	}
+	mut objects := [
+		PdfObject{
+			id:   1
+			body: '<< /Type /Catalog /Pages 2 0 R >>'
+		},
+		PdfObject{
+			id:   2
+			body: ''
+		},
+		PdfObject{
+			id:   3
+			body: '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>'
+		},
+		PdfObject{
+			id:   4
+			body: '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>'
+		},
+	]
+	mut kids := []string{}
+	mut next_id := 5
+	for page in pages {
+		page_id := next_id
+		content_id := next_id + 1
+		next_id += 2
+		kids << '${page_id} 0 R'
+		match page.kind {
+			'image' {
+				image_id := next_id
+				next_id++
+				stream := image_page_stream(page, image_id)
+				objects << PdfObject{
+					id:   page_id
+					body: page_object(content_id, image_id)
+				}
+				objects << stream_object(content_id, stream)
+				objects << image_object(image_id, page.image)
+			}
+			else {
+				stream := text_page_stream(page)
+				objects << PdfObject{
+					id:   page_id
+					body: text_page_object(content_id)
+				}
+				objects << stream_object(content_id, stream)
+			}
+		}
+	}
+	objects[1] = PdfObject{
+		id:   2
+		body: '<< /Type /Pages /Kids [${kids.join(' ')}] /Count ${kids.len} >>'
+	}
+	return objects_to_pdf(objects)
+}
+
+fn text_page_object(content_id int) string {
+	return '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${a4_width_points} ${a4_height_points}] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ${content_id} 0 R >>'
+}
+
+fn page_object(content_id int, image_id int) string {
+	return '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${a4_width_points} ${a4_height_points}] /Resources << /XObject << /Im0 ${image_id} 0 R >> /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ${content_id} 0 R >>'
+}
+
+fn stream_object(id int, stream string) PdfObject {
+	return PdfObject{
+		id:   id
+		body: '<< /Length ${stream.len} >>\nstream\n${stream}\nendstream'
+	}
+}
+
+fn objects_to_pdf(objects []PdfObject) string {
+	max_id := max_object_id(objects)
+	mut body := '%PDF-1.4\n'
+	mut offsets := []int{len: max_id + 1}
+	for object in objects {
+		offsets[object.id] = body.len
+		body += '${object.id} 0 obj\n${object.body}\nendobj\n'
+	}
+	startxref := body.len
+	body += 'xref\n0 ${max_id + 1}\n'
+	body += '0000000000 65535 f \n'
+	for id in 1 .. max_id + 1 {
+		body += '${zero_pad(offsets[id], 10)} 00000 n \n'
+	}
+	body += 'trailer\n<< /Size ${max_id + 1} /Root 1 0 R >>\n'
+	body += 'startxref\n${startxref}\n%%EOF\n'
+	return body
+}
+
+fn max_object_id(objects []PdfObject) int {
+	mut max_id := 0
+	for object in objects {
+		if object.id > max_id {
+			max_id = object.id
+		}
+	}
+	return max_id
+}
+
+fn zero_pad(value int, width int) string {
+	mut out := value.str()
+	for out.len < width {
+		out = '0${out}'
+	}
+	return out
+}
