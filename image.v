@@ -16,6 +16,27 @@ pub fn (mut doc Document) add_image_page_from_path(path string, options ImagePag
 	}
 }
 
+pub fn (mut doc Document) add_jpeg_page_from_bytes(bytes []u8, options ImagePageOptions) !ImageInfo {
+	info := parse_jpeg_info(bytes)!
+	image := PdfImage{
+		width:       info.width
+		height:      info.height
+		encoded:     bytes.clone()
+		filter:      '/DCTDecode'
+		color_space: if info.components == 1 { '/DeviceGray' } else { '/DeviceRGB' }
+	}
+	doc.pages << PdfPage{
+		kind:          'image'
+		image:         image
+		margin_points: normalized_margin(options.margin_points)
+		fit_to_page:   options.fit_to_page
+	}
+	return ImageInfo{
+		width:  image.width
+		height: image.height
+	}
+}
+
 fn load_pdf_image(path string) !PdfImage {
 	mut img := stbi.load(path, desired_channels: 3)!
 	defer {
@@ -24,9 +45,10 @@ fn load_pdf_image(path string) !PdfImage {
 	size := img.width * img.height * img.nr_channels
 	rgb := unsafe { img.data.vbytes(size).clone() }
 	return PdfImage{
-		width:  img.width
-		height: img.height
-		rgb:    rgb
+		width:       img.width
+		height:      img.height
+		rgb:         rgb
+		color_space: '/DeviceRGB'
 	}
 }
 
@@ -36,11 +58,77 @@ fn image_page_stream(page PdfPage, _image_id int) string {
 }
 
 fn image_object(id int, image PdfImage) PdfObject {
+	if image.filter != '' {
+		stream := image.encoded.bytestr()
+		return PdfObject{
+			id:   id
+			body: '<< /Type /XObject /Subtype /Image /Width ${image.width} /Height ${image.height} /ColorSpace ${image.color_space} /BitsPerComponent 8 /Filter ${image.filter} /Length ${stream.len} >>\nstream\n${stream}\nendstream'
+		}
+	}
 	stream := ascii_hex(image.rgb)
 	return PdfObject{
 		id:   id
-		body: '<< /Type /XObject /Subtype /Image /Width ${image.width} /Height ${image.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /ASCIIHexDecode /Length ${stream.len} >>\nstream\n${stream}\nendstream'
+		body: '<< /Type /XObject /Subtype /Image /Width ${image.width} /Height ${image.height} /ColorSpace ${image.color_space} /BitsPerComponent 8 /Filter /ASCIIHexDecode /Length ${stream.len} >>\nstream\n${stream}\nendstream'
 	}
+}
+
+struct JpegInfo {
+	width      int
+	height     int
+	components int
+}
+
+fn parse_jpeg_info(bytes []u8) !JpegInfo {
+	if bytes.len < 4 || bytes[0] != 0xff || bytes[1] != 0xd8 {
+		return error('invalid jpeg')
+	}
+	mut i := 2
+	for i + 3 < bytes.len {
+		for i < bytes.len && bytes[i] == 0xff {
+			i++
+		}
+		if i >= bytes.len {
+			break
+		}
+		marker := bytes[i]
+		i++
+		if marker == 0xd8 || marker == 0xd9 {
+			continue
+		}
+		if i + 2 > bytes.len {
+			break
+		}
+		segment_len := int(bytes[i]) * 256 + int(bytes[i + 1])
+		if segment_len < 2 || i + segment_len > bytes.len {
+			return error('invalid jpeg segment')
+		}
+		if is_jpeg_sof_marker(marker) {
+			if segment_len < 8 {
+				return error('invalid jpeg frame')
+			}
+			height := int(bytes[i + 3]) * 256 + int(bytes[i + 4])
+			width := int(bytes[i + 5]) * 256 + int(bytes[i + 6])
+			components := int(bytes[i + 7])
+			if width <= 0 || height <= 0 {
+				return error('invalid jpeg dimensions')
+			}
+			return JpegInfo{
+				width:      width
+				height:     height
+				components: components
+			}
+		}
+		if marker == 0xda {
+			break
+		}
+		i += segment_len
+	}
+	return error('jpeg dimensions not found')
+}
+
+fn is_jpeg_sof_marker(marker u8) bool {
+	return marker in [u8(0xc0), 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce,
+		0xcf]
 }
 
 struct ImageRect {

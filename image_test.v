@@ -24,11 +24,26 @@ fn test_image_page_embeds_xobject_and_draw_command() {
 	assert body.contains('/ASCIIHexDecode')
 }
 
+fn test_jpeg_page_embeds_dct_stream_without_rasterizing() {
+	jpeg := jpeg_fixture_bytes()
+	mut doc := new_document()
+	info := doc.add_jpeg_page_from_bytes(jpeg, ImagePageOptions{})!
+	body := doc.render()
+	assert info.width == 4
+	assert info.height == 2
+	assert body.contains('/Subtype /Image')
+	assert body.contains('/Width 4')
+	assert body.contains('/Height 2')
+	assert body.contains('/Filter /DCTDecode')
+	assert !body.contains('/ASCIIHexDecode')
+}
+
 fn test_fit_to_page_changes_large_image_dimensions() {
 	image := PdfImage{
-		width:  1000
-		height: 1000
-		rgb:    []u8{len: 1000 * 1000 * 3}
+		width:       1000
+		height:      1000
+		rgb:         []u8{len: 1000 * 1000 * 3}
+		color_space: '/DeviceRGB'
 	}
 	fit := image_rect(PdfPage{
 		kind:          'image'
@@ -58,4 +73,38 @@ fn write_test_png(path string, width int, height int) ! {
 		}
 	}
 	stbi.stbi_write_png(path, width, height, 4, pixels.data, width * 4)!
+}
+
+fn jpeg_fixture_bytes() []u8 {
+	return [
+		u8(0xff),
+		0xd8,
+		0xff,
+		0xe0,
+		0x00,
+		0x04,
+		0x00,
+		0x00,
+		0xff,
+		0xc0,
+		0x00,
+		0x11,
+		0x08,
+		0x00,
+		0x02,
+		0x00,
+		0x04,
+		0x03,
+		0x01,
+		0x11,
+		0x00,
+		0x02,
+		0x11,
+		0x00,
+		0x03,
+		0x11,
+		0x00,
+		0xff,
+		0xd9,
+	]
 }

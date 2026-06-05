@@ -36,9 +36,12 @@ struct PdfPage {
 }
 
 struct PdfImage {
-	width  int
-	height int
-	rgb    []u8
+	width       int
+	height      int
+	rgb         []u8
+	encoded     []u8
+	filter      string
+	color_space string = '/DeviceRGB'
 }
 
 pub struct Document {
