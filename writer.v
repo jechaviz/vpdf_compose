@@ -47,6 +47,28 @@ pub fn (doc Document) render() string {
 	mut kids := []string{}
 	mut next_id := 5
 	for page in pages {
+		if page.kind == 'raw_pdf' {
+			page_id := next_id
+			next_id++
+			kids << '${page_id} 0 R'
+			mut remap := map[int]int{}
+			remap[page.raw_page_id] = page_id
+			for object in page.raw_objects {
+				remap[object.id] = next_id
+				next_id++
+			}
+			objects << PdfObject{
+				id:   page_id
+				body: imported_pdf_page_body(page.raw_page_body, remap)
+			}
+			for object in page.raw_objects {
+				objects << PdfObject{
+					id:   remap[object.id]
+					body: remap_pdf_object_body(object.body, remap)
+				}
+			}
+			continue
+		}
 		page_id := next_id
 		content_id := next_id + 1
 		next_id += 2

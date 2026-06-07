@@ -33,6 +33,9 @@ struct PdfPage {
 	image         PdfImage
 	margin_points int
 	fit_to_page   bool
+	raw_page_id   int
+	raw_page_body string
+	raw_objects   []PdfObject
 }
 
 struct PdfImage {
