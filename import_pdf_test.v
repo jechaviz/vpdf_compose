@@ -39,3 +39,13 @@ fn test_imports_referenced_objects_without_copying_unrelated_pdf_objects() {
 	assert startxref > 0
 	assert body[startxref..].starts_with('xref')
 }
+
+fn test_imports_pages_when_objects_start_after_carriage_return() {
+	source := '%PDF-1.4\r274 0 obj\r<< /Type /Page /Parent 271 0 R /Resources << /Font << /TT2 277 0 R >> >> /Contents 279 0 R /MediaBox [ 0 0 612 792 ] >>\rendobj\r277 0 obj\r<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\rendobj\r279 0 obj\r<< /Length 26 >>\rstream\rBT (udhr page needle) Tj ET\rendstream\rendobj\r'
+	mut doc := new_document()
+	imported := doc.add_pdf_pages_from_bytes(source.bytes())!
+	assert imported == 1
+	body := doc.render()
+	assert body.contains('udhr page needle')
+	assert body.contains('/Count 1')
+}

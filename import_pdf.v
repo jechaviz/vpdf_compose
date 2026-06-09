@@ -42,7 +42,7 @@ fn parse_pdf_objects(source string) []PdfObject {
 	for offset < source.len {
 		rel := source[offset..].index(' obj') or { break }
 		marker := offset + rel
-		line_start := source[..marker].last_index('\n') or { -1 } + 1
+		line_start := pdf_object_header_start(source, marker)
 		header := source[line_start..marker].trim_space()
 		parts := header.split(' ')
 		if parts.len < 2 || parts[1] != '0' {
@@ -62,6 +62,17 @@ fn parse_pdf_objects(source string) []PdfObject {
 		offset = body_start + end_rel + 'endobj'.len
 	}
 	return out
+}
+
+fn pdf_object_header_start(source string, marker int) int {
+	mut i := marker - 1
+	for i >= 0 {
+		if source[i] == `\n` || source[i] == `\r` {
+			return i + 1
+		}
+		i--
+	}
+	return 0
 }
 
 fn pdf_import_excluded_objects(objects []PdfObject) map[int]bool {
