@@ -9,10 +9,7 @@ pub fn (mut doc Document) add_pdf_pages_from_bytes(bytes []u8) !int {
 	object_map := pdf_object_map(objects)
 	excluded := pdf_import_excluded_objects(objects)
 	mut imported := 0
-	for object in objects {
-		if !is_pdf_page_object(object.body) {
-			continue
-		}
+	for object in ordered_pdf_page_objects(objects, object_map) {
 		support_objects := pdf_page_support_objects(object.body, object_map, excluded)
 		doc.pages << PdfPage{
 			kind:          'raw_pdf'
@@ -26,6 +23,64 @@ pub fn (mut doc Document) add_pdf_pages_from_bytes(bytes []u8) !int {
 		return error('pdf pages not found')
 	}
 	return imported
+}
+
+fn ordered_pdf_page_objects(objects []PdfObject, object_map map[int]PdfObject) []PdfObject {
+	ids := pdf_page_tree_order(objects, object_map)
+	if ids.len > 0 {
+		mut ordered := []PdfObject{}
+		for id in ids {
+			object := object_map[id] or { continue }
+			if is_pdf_page_object(object.body) {
+				ordered << object
+			}
+		}
+		if ordered.len > 0 {
+			return ordered
+		}
+	}
+	mut ordered := []PdfObject{}
+	for object in objects {
+		if is_pdf_page_object(object.body) {
+			ordered << object
+		}
+	}
+	return ordered
+}
+
+fn pdf_page_tree_order(objects []PdfObject, object_map map[int]PdfObject) []int {
+	catalog := pdf_catalog_object(objects) or { return []int{} }
+	root_pages_id := pdf_ref_value(catalog.body, '/Pages') or { return []int{} }
+	mut seen := map[int]bool{}
+	return pdf_collect_page_tree_ids(root_pages_id, object_map, mut seen)
+}
+
+fn pdf_catalog_object(objects []PdfObject) ?PdfObject {
+	for object in objects {
+		if is_pdf_catalog_object(object.body) {
+			return object
+		}
+	}
+	return none
+}
+
+fn pdf_collect_page_tree_ids(id int, object_map map[int]PdfObject, mut seen map[int]bool) []int {
+	if id in seen {
+		return []int{}
+	}
+	object := object_map[id] or { return []int{} }
+	seen[id] = true
+	if is_pdf_page_object(object.body) {
+		return [id]
+	}
+	if !is_pdf_pages_object(object.body) {
+		return []int{}
+	}
+	mut ids := []int{}
+	for kid_id in pdf_kids_refs(object.body) {
+		ids << pdf_collect_page_tree_ids(kid_id, object_map, mut seen)
+	}
+	return ids
 }
 
 fn pdf_object_map(objects []PdfObject) map[int]PdfObject {
@@ -103,6 +158,41 @@ fn is_pdf_pages_object(body string) bool {
 
 fn is_pdf_page_object(body string) bool {
 	return pdf_name_value(body, '/Type', '/Page')
+}
+
+fn pdf_ref_value(body string, key string) ?int {
+	start := pdf_key_index(body, key) or { return none }
+	after_key := start + key.len
+	value_start := skip_pdf_space(body, after_key)
+	return pdf_reference_at(body, value_start)?.id
+}
+
+fn pdf_kids_refs(body string) []int {
+	start := pdf_key_index(body, '/Kids') or { return []int{} }
+	array_start := body[start..].index('[') or { return []int{} }
+	absolute_start := start + array_start + 1
+	array_end_rel := body[absolute_start..].index(']') or { return []int{} }
+	array_body := body[absolute_start..absolute_start + array_end_rel]
+	return pdf_ref_ids(array_body)
+}
+
+fn pdf_key_index(body string, key string) ?int {
+	mut offset := 0
+	for offset < body.len {
+		rel := body[offset..].index(key) or { return none }
+		start := offset + rel
+		after_key := start + key.len
+		if start > 0 && is_pdf_name_char(body[start - 1]) {
+			offset = after_key
+			continue
+		}
+		if after_key < body.len && is_pdf_name_char(body[after_key]) {
+			offset = after_key
+			continue
+		}
+		return start
+	}
+	return none
 }
 
 fn imported_pdf_page_body(body string, remap map[int]int) string {

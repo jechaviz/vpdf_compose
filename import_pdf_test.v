@@ -40,6 +40,19 @@ fn test_imports_referenced_objects_without_copying_unrelated_pdf_objects() {
 	assert body[startxref..].starts_with('xref')
 }
 
+fn test_imports_pages_in_page_tree_kids_order() {
+	source := '%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [4 0 R 3 0 R] /Count 2 >>\nendobj\n3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> /Contents 5 0 R >>\nendobj\n4 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> /Contents 6 0 R >>\nendobj\n5 0 obj\n<< /Length 30 >>\nstream\nBT (logical page two) Tj ET\nendstream\nendobj\n6 0 obj\n<< /Length 30 >>\nstream\nBT (logical page one) Tj ET\nendstream\nendobj\ntrailer\n<< /Root 1 0 R /Size 7 >>\nstartxref\n0\n%%EOF\n'
+	mut doc := new_document()
+	imported := doc.add_pdf_pages_from_bytes(source.bytes())!
+	body := doc.render()
+	assert imported == 2
+	page_one := body.index('logical page one') or { -1 }
+	page_two := body.index('logical page two') or { -1 }
+	assert page_one >= 0
+	assert page_two >= 0
+	assert page_one < page_two
+}
+
 fn test_imports_pages_when_objects_start_after_carriage_return() {
 	source := '%PDF-1.4\r274 0 obj\r<< /Type /Page /Parent 271 0 R /Resources << /Font << /TT2 277 0 R >> >> /Contents 279 0 R /MediaBox [ 0 0 612 792 ] >>\rendobj\r277 0 obj\r<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\rendobj\r279 0 obj\r<< /Length 26 >>\rstream\rBT (udhr page needle) Tj ET\rendstream\rendobj\r'
 	mut doc := new_document()
