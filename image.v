@@ -143,21 +143,31 @@ fn image_rect(page PdfPage) ImageRect {
 	area_width := a4_width_points - margin * 2
 	area_height := a4_height_points - margin * 2
 	mut scale := 1.0
+	mut limited_by_height := false
 	if page.fit_to_page {
 		scale_w := f64(area_width) / f64(page.image.width)
 		scale_h := f64(area_height) / f64(page.image.height)
+		limited_by_height = scale_h <= scale_w
 		scale = if scale_w < scale_h { scale_w } else { scale_h }
 		if scale > 1.0 {
 			scale = 1.0
+			limited_by_height = false
 		}
 	}
 	width := int(f64(page.image.width) * scale)
 	height := int(f64(page.image.height) * scale)
+	draw_width := if width <= 0 { 1 } else { width }
+	draw_height := if height <= 0 { 1 } else { height }
+	y := if page.fit_to_page && limited_by_height {
+		margin
+	} else {
+		a4_height_points - margin - draw_height
+	}
 	return ImageRect{
-		x:      (a4_width_points - width) / 2
-		y:      (a4_height_points - height) / 2
-		width:  if width <= 0 { 1 } else { width }
-		height: if height <= 0 { 1 } else { height }
+		x:      margin
+		y:      y
+		width:  draw_width
+		height: draw_height
 	}
 }
 

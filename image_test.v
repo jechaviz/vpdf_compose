@@ -59,6 +59,29 @@ fn test_fit_to_page_changes_large_image_dimensions() {
 	})
 	assert fit.width < original.width
 	assert fit.height < original.height
+	assert fit.x == 40
+	assert fit.y == 287
+	assert original.x == 40
+	assert original.y == -198
+}
+
+fn test_fit_to_page_anchors_tall_image_to_margin_like_teedy() {
+	image := PdfImage{
+		width:       100
+		height:      1000
+		rgb:         []u8{len: 100 * 1000 * 3}
+		color_space: '/DeviceRGB'
+	}
+	rect := image_rect(PdfPage{
+		kind:          'image'
+		image:         image
+		margin_points: 40
+		fit_to_page:   true
+	})
+	assert rect.x == 40
+	assert rect.y == 40
+	assert rect.width == 76
+	assert rect.height == 762
 }
 
 fn write_test_png(path string, width int, height int) ! {
