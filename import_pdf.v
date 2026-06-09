@@ -6,12 +6,14 @@ pub fn (mut doc Document) add_pdf_pages_from_bytes(bytes []u8) !int {
 	if objects.len == 0 {
 		return error('pdf objects not found')
 	}
-	support_objects := pdf_support_objects(objects)
+	object_map := pdf_object_map(objects)
+	excluded := pdf_import_excluded_objects(objects)
 	mut imported := 0
 	for object in objects {
 		if !is_pdf_page_object(object.body) {
 			continue
 		}
+		support_objects := pdf_page_support_objects(object.body, object_map, excluded)
 		doc.pages << PdfPage{
 			kind:          'raw_pdf'
 			raw_page_id:   object.id
@@ -24,6 +26,14 @@ pub fn (mut doc Document) add_pdf_pages_from_bytes(bytes []u8) !int {
 		return error('pdf pages not found')
 	}
 	return imported
+}
+
+fn pdf_object_map(objects []PdfObject) map[int]PdfObject {
+	mut out := map[int]PdfObject{}
+	for object in objects {
+		out[object.id] = object
+	}
+	return out
 }
 
 fn parse_pdf_objects(source string) []PdfObject {
@@ -54,28 +64,34 @@ fn parse_pdf_objects(source string) []PdfObject {
 	return out
 }
 
-fn pdf_support_objects(objects []PdfObject) []PdfObject {
-	mut out := []PdfObject{}
+fn pdf_import_excluded_objects(objects []PdfObject) map[int]bool {
+	mut excluded := map[int]bool{}
 	for object in objects {
 		if is_pdf_catalog_object(object.body) || is_pdf_pages_object(object.body)
 			|| is_pdf_page_object(object.body) {
-			continue
+			excluded[object.id] = true
 		}
-		out << object
 	}
+	return excluded
+}
+
+fn pdf_page_support_objects(page_body string, object_map map[int]PdfObject, excluded map[int]bool) []PdfObject {
+	mut out := []PdfObject{}
+	mut seen := map[int]bool{}
+	collect_pdf_support_refs(pdf_ref_ids(page_body), object_map, excluded, mut seen, mut out)
 	return out
 }
 
 fn is_pdf_catalog_object(body string) bool {
-	return body.contains('/Type /Catalog')
+	return pdf_name_value(body, '/Type', '/Catalog')
 }
 
 fn is_pdf_pages_object(body string) bool {
-	return body.contains('/Type /Pages')
+	return pdf_name_value(body, '/Type', '/Pages')
 }
 
 fn is_pdf_page_object(body string) bool {
-	return body.contains('/Type /Page') && !body.contains('/Type /Pages')
+	return pdf_name_value(body, '/Type', '/Page')
 }
 
 fn imported_pdf_page_body(body string, remap map[int]int) string {
@@ -96,7 +112,7 @@ fn remove_pdf_parent_ref(body string) string {
 }
 
 fn remap_pdf_object_body(body string, remap map[int]int) string {
-	stream_at := body.index('\nstream\n') or { return remap_pdf_refs(body, remap) }
+	stream_at := pdf_stream_marker_index(body) or { return remap_pdf_refs(body, remap) }
 	return remap_pdf_refs(body[..stream_at], remap) + body[stream_at..]
 }
 
@@ -105,26 +121,130 @@ fn remap_pdf_refs(body string, remap map[int]int) string {
 	mut i := 0
 	for i < body.len {
 		ch := body[i]
-		if !is_pdf_digit(ch) {
-			out << ch
-			i++
-			continue
-		}
-		start := i
-		for i < body.len && is_pdf_digit(body[i]) {
-			i++
-		}
-		id := body[start..i].int()
-		if i + 4 <= body.len && body[i..i + 4] == ' 0 R' {
+		if pdf_ref := pdf_reference_at(body, i) {
+			id := pdf_ref.id
 			if new_id := remap[id] {
 				out << '${new_id} 0 R'.bytes()
-				i += 4
+				i = pdf_ref.end
 				continue
 			}
 		}
-		out << body[start..i].bytes()
+		out << ch
+		i++
 	}
 	return out.bytestr()
+}
+
+struct PdfRef {
+	id  int
+	end int
+}
+
+fn collect_pdf_support_refs(refs []int, object_map map[int]PdfObject, excluded map[int]bool, mut seen map[int]bool, mut out []PdfObject) {
+	for id in refs {
+		if id in excluded || id in seen {
+			continue
+		}
+		object := object_map[id] or { continue }
+		seen[id] = true
+		out << object
+		collect_pdf_support_refs(pdf_ref_ids(object.body), object_map, excluded, mut seen, mut out)
+	}
+}
+
+fn pdf_ref_ids(body string) []int {
+	scan := pdf_reference_scan_body(body)
+	mut out := []int{}
+	mut i := 0
+	for i < scan.len {
+		if pdf_ref := pdf_reference_at(scan, i) {
+			if pdf_ref.id !in out {
+				out << pdf_ref.id
+			}
+			i = pdf_ref.end
+			continue
+		}
+		i++
+	}
+	return out
+}
+
+fn pdf_reference_scan_body(body string) string {
+	stream_at := pdf_stream_marker_index(body) or { return body }
+	return body[..stream_at]
+}
+
+fn pdf_reference_at(body string, start int) ?PdfRef {
+	if start >= body.len || !is_pdf_digit(body[start]) {
+		return none
+	}
+	mut i := start
+	for i < body.len && is_pdf_digit(body[i]) {
+		i++
+	}
+	id := body[start..i].int()
+	i = skip_pdf_space(body, i)
+	if i >= body.len || !is_pdf_digit(body[i]) {
+		return none
+	}
+	gen_start := i
+	for i < body.len && is_pdf_digit(body[i]) {
+		i++
+	}
+	if body[gen_start..i].int() != 0 {
+		return none
+	}
+	i = skip_pdf_space(body, i)
+	if i >= body.len || body[i] != `R` {
+		return none
+	}
+	return PdfRef{
+		id:  id
+		end: i + 1
+	}
+}
+
+fn pdf_name_value(body string, key string, value string) bool {
+	mut offset := 0
+	for offset < body.len {
+		rel := body[offset..].index(key) or { return false }
+		start := offset + rel
+		after_key := start + key.len
+		if after_key < body.len && is_pdf_name_char(body[after_key]) {
+			offset = after_key
+			continue
+		}
+		value_start := skip_pdf_space(body, after_key)
+		value_end := value_start + value.len
+		if value_end <= body.len && body[value_start..value_end] == value
+			&& (value_end == body.len || !is_pdf_name_char(body[value_end])) {
+			return true
+		}
+		offset = after_key
+	}
+	return false
+}
+
+fn pdf_stream_marker_index(body string) ?int {
+	for marker in ['\nstream\n', '\r\nstream\r\n', '\nstream\r\n', '\r\nstream\n'] {
+		if index := body.index(marker) {
+			return index
+		}
+	}
+	return none
+}
+
+fn skip_pdf_space(body string, start int) int {
+	mut i := start
+	for i < body.len && body[i] in [` `, `\t`, `\r`, `\n`, 0x0c, 0x00] {
+		i++
+	}
+	return i
+}
+
+fn is_pdf_name_char(ch u8) bool {
+	return (ch >= `a` && ch <= `z`) || (ch >= `A` && ch <= `Z`)
+		|| (ch >= `0` && ch <= `9`) || ch in [`_`, `-`]
 }
 
 fn is_pdf_digit(ch u8) bool {

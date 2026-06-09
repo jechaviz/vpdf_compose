@@ -119,21 +119,32 @@ fn stream_object(id int, stream string) PdfObject {
 
 fn objects_to_pdf(objects []PdfObject) string {
 	max_id := max_object_id(objects)
-	mut body := '%PDF-1.4\n'
+	mut body := []u8{cap: estimated_pdf_size(objects)}
+	body << '%PDF-1.4\n'.bytes()
 	mut offsets := []int{len: max_id + 1}
 	for object in objects {
 		offsets[object.id] = body.len
-		body += '${object.id} 0 obj\n${object.body}\nendobj\n'
+		body << '${object.id} 0 obj\n'.bytes()
+		body << object.body.bytes()
+		body << '\nendobj\n'.bytes()
 	}
 	startxref := body.len
-	body += 'xref\n0 ${max_id + 1}\n'
-	body += '0000000000 65535 f \n'
+	body << 'xref\n0 ${max_id + 1}\n'.bytes()
+	body << '0000000000 65535 f \n'.bytes()
 	for id in 1 .. max_id + 1 {
-		body += '${zero_pad(offsets[id], 10)} 00000 n \n'
+		body << '${zero_pad(offsets[id], 10)} 00000 n \n'.bytes()
 	}
-	body += 'trailer\n<< /Size ${max_id + 1} /Root 1 0 R >>\n'
-	body += 'startxref\n${startxref}\n%%EOF\n'
-	return body
+	body << 'trailer\n<< /Size ${max_id + 1} /Root 1 0 R >>\n'.bytes()
+	body << 'startxref\n${startxref}\n%%EOF\n'.bytes()
+	return body.bytestr()
+}
+
+fn estimated_pdf_size(objects []PdfObject) int {
+	mut size := 1024
+	for object in objects {
+		size += object.body.len + 48
+	}
+	return size
 }
 
 fn max_object_id(objects []PdfObject) int {

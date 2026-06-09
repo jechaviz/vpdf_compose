@@ -23,3 +23,19 @@ fn test_imports_pages_from_rendered_pdf() {
 	assert startxref > 0
 	assert body[startxref..].starts_with('xref')
 }
+
+fn test_imports_referenced_objects_without_copying_unrelated_pdf_objects() {
+	source := '%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [3 0 R 4 0 R] /Count 2 >>\nendobj\n3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources 7 0 R /Contents 5 0 R >>\nendobj\n4 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources 7 0 R /Contents 6 0 R >>\nendobj\n5 0 obj\n<< /Length 30 >>\nstream\nBT (real pdf page one) Tj ET\nendstream\nendobj\n6 0 obj\n<< /Length 30 >>\r\nstream\r\nBT (real pdf page two) Tj ET\r\nendstream\r\nendobj\n7 0 obj\n<< /Font << /F1 8 0 R >> >>\nendobj\n8 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n9 0 obj\n<< /Length 17 >>\nstream\nunrelated needle\nendstream\nendobj\nxref\n0 10\n0000000000 65535 f \ntrailer\n<< /Root 1 0 R /Size 10 >>\nstartxref\n0\n%%EOF\n'
+	mut doc := new_document()
+	imported := doc.add_pdf_pages_from_bytes(source.bytes())!
+	assert imported == 2
+	body := doc.render()
+	assert body.contains('/Count 2')
+	assert body.contains('real pdf page one')
+	assert body.contains('real pdf page two')
+	assert body.contains('/BaseFont /Helvetica')
+	assert !body.contains('unrelated needle')
+	startxref := body.all_after_last('startxref\n').all_before('\n').int()
+	assert startxref > 0
+	assert body[startxref..].starts_with('xref')
+}
