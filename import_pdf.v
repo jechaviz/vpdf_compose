@@ -9,7 +9,7 @@ pub fn (mut doc Document) add_pdf_pages_from_bytes(bytes []u8) !int {
 	object_map := pdf_object_map(objects)
 	excluded := pdf_import_excluded_objects(objects)
 	mut imported := 0
-	for object in ordered_pdf_page_objects(objects, object_map) {
+	for object in ordered_pdf_page_objects(source, objects, object_map) {
 		page_body := pdf_page_body_with_inherited_attrs(object.body, object_map)
 		support_objects := pdf_page_support_objects(page_body, object_map, excluded)
 		doc.pages << PdfPage{
@@ -26,8 +26,8 @@ pub fn (mut doc Document) add_pdf_pages_from_bytes(bytes []u8) !int {
 	return imported
 }
 
-fn ordered_pdf_page_objects(objects []PdfObject, object_map map[int]PdfObject) []PdfObject {
-	ids := pdf_page_tree_order(objects, object_map)
+fn ordered_pdf_page_objects(source string, objects []PdfObject, object_map map[int]PdfObject) []PdfObject {
+	ids := pdf_page_tree_order(source, objects, object_map)
 	if ids.len > 0 {
 		mut ordered := []PdfObject{}
 		for id in ids {
@@ -49,20 +49,57 @@ fn ordered_pdf_page_objects(objects []PdfObject, object_map map[int]PdfObject) [
 	return ordered
 }
 
-fn pdf_page_tree_order(objects []PdfObject, object_map map[int]PdfObject) []int {
-	catalog := pdf_catalog_object(objects) or { return []int{} }
+fn pdf_page_tree_order(source string, objects []PdfObject, object_map map[int]PdfObject) []int {
+	catalog := pdf_catalog_object(source, objects, object_map) or { return []int{} }
 	root_pages_id := pdf_ref_value(catalog.body, '/Pages') or { return []int{} }
 	mut seen := map[int]bool{}
 	return pdf_collect_page_tree_ids(root_pages_id, object_map, mut seen)
 }
 
-fn pdf_catalog_object(objects []PdfObject) ?PdfObject {
-	for object in objects {
+fn pdf_catalog_object(source string, objects []PdfObject, object_map map[int]PdfObject) ?PdfObject {
+	if root_id := pdf_latest_trailer_root_id(source) {
+		if object := object_map[root_id] {
+			if is_pdf_catalog_object(object.body) {
+				return object
+			}
+		}
+	}
+	mut i := objects.len
+	for i > 0 {
+		i--
+		object := objects[i]
 		if is_pdf_catalog_object(object.body) {
 			return object
 		}
 	}
 	return none
+}
+
+fn pdf_latest_trailer_root_id(source string) ?int {
+	mut root_id := 0
+	mut offset := 0
+	for offset < source.len {
+		rel := source[offset..].index('trailer') or { break }
+		trailer_at := offset + rel + 'trailer'.len
+		dict_rel := source[trailer_at..].index('<<') or {
+			offset = trailer_at
+			continue
+		}
+		dict_start := trailer_at + dict_rel
+		dict_end := pdf_balanced_dict_end(source, dict_start)
+		if dict_end <= dict_start || dict_end > source.len {
+			offset = trailer_at
+			continue
+		}
+		if id := pdf_ref_value(source[dict_start..dict_end], '/Root') {
+			root_id = id
+		}
+		offset = dict_end
+	}
+	if root_id <= 0 {
+		return none
+	}
+	return root_id
 }
 
 fn pdf_collect_page_tree_ids(id int, object_map map[int]PdfObject, mut seen map[int]bool) []int {

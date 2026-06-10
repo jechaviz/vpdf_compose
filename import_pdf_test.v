@@ -55,6 +55,15 @@ fn test_imports_pages_in_page_tree_kids_order() {
 	assert page_one < page_two
 }
 
+fn test_imports_incremental_update_latest_catalog_revision() {
+	mut doc := new_document()
+	imported := doc.add_pdf_pages_from_bytes(incremental_catalog_pdf_for_import_test().bytes())!
+	body := doc.render()
+	assert imported == 1
+	assert body.contains('current incremental page')
+	assert !body.contains('stale incremental page')
+}
+
 fn test_imports_pages_when_objects_start_after_carriage_return() {
 	source := '%PDF-1.4\r274 0 obj\r<< /Type /Page /Parent 271 0 R /Resources << /Font << /TT2 277 0 R >> >> /Contents 279 0 R /MediaBox [ 0 0 612 792 ] >>\rendobj\r277 0 obj\r<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\rendobj\r279 0 obj\r<< /Length 26 >>\rstream\rBT (udhr page needle) Tj ET\rendstream\rendobj\r'
 	mut doc := new_document()
@@ -157,4 +166,10 @@ fn append_import_pdf_test_bytes(mut dst []u8, src []u8) {
 	for ch in src {
 		dst << ch
 	}
+}
+
+fn incremental_catalog_pdf_for_import_test() string {
+	stale := 'BT (stale incremental page) Tj ET'
+	current := 'BT (current incremental page) Tj ET'
+	return '%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] /Resources << >> /Contents 4 0 R >>\nendobj\n4 0 obj\n<< /Length ${stale.len} >>\nstream\n${stale}\nendstream\nendobj\nxref\n0 5\n0000000000 65535 f \ntrailer\n<< /Root 1 0 R /Size 5 >>\nstartxref\n0\n1 0 obj\n<< /Type /Catalog /Pages 5 0 R >>\nendobj\n5 0 obj\n<< /Type /Pages /Kids [6 0 R] /Count 1 >>\nendobj\n6 0 obj\n<< /Type /Page /Parent 5 0 R /MediaBox [0 0 200 200] /Resources << >> /Contents 7 0 R >>\nendobj\n7 0 obj\n<< /Length ${current.len} >>\nstream\n${current}\nendstream\nendobj\nxref\n0 8\n0000000000 65535 f \ntrailer\n<< /Root 1 0 R /Size 8 /Prev 0 >>\nstartxref\n1\n%%EOF\n'
 }
