@@ -287,11 +287,10 @@ fn imported_pdf_page_body(body string, remap map[int]int) string {
 }
 
 fn remove_pdf_parent_ref(body string) string {
-	start := body.index('/Parent ') or { return body }
-	after_start := start + '/Parent '.len
-	after := body[after_start..]
-	end_rel := after.index(' R') or { return body }
-	end := after_start + end_rel + 2
+	start := pdf_key_index(body, '/Parent') or { return body }
+	value_start := skip_pdf_space(body, start + '/Parent'.len)
+	parent_ref := pdf_reference_at(body, value_start) or { return body }
+	end := parent_ref.end
 	return (body[..start] + body[end..]).replace('  ', ' ')
 }
 
