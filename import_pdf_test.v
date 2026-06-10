@@ -64,6 +64,17 @@ fn test_imports_incremental_update_latest_catalog_revision() {
 	assert !body.contains('stale incremental page')
 }
 
+fn test_imports_pages_with_hex_escaped_type_names() {
+	content := 'BT (escaped type page) Tj ET'
+	source := '%PDF-1.4\n1 0 obj\n<< /Type /C#61talog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /P#61ges /Kids [3 0 R] /Count 1 >>\nendobj\n3 0 obj\n<< /Type /P#61ge /Parent 2 0 R /MediaBox [0 0 200 200] /Resources << >> /Contents 4 0 R >>\nendobj\n4 0 obj\n<< /Length ${content.len} >>\nstream\n${content}\nendstream\nendobj\ntrailer\n<< /Root 1 0 R /Size 5 >>\nstartxref\n0\n%%EOF\n'
+	mut doc := new_document()
+	imported := doc.add_pdf_pages_from_bytes(source.bytes())!
+	body := doc.render()
+	assert imported == 1
+	assert body.contains('escaped type page')
+	assert body.contains('/Count 1')
+}
+
 fn test_imports_pages_when_objects_start_after_carriage_return() {
 	source := '%PDF-1.4\r274 0 obj\r<< /Type /Page /Parent 271 0 R /Resources << /Font << /TT2 277 0 R >> >> /Contents 279 0 R /MediaBox [ 0 0 612 792 ] >>\rendobj\r277 0 obj\r<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\rendobj\r279 0 obj\r<< /Length 26 >>\rstream\rBT (udhr page needle) Tj ET\rendstream\rendobj\r'
 	mut doc := new_document()

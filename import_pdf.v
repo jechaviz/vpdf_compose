@@ -360,6 +360,11 @@ struct PdfRef {
 	end int
 }
 
+struct PdfName {
+	text string
+	end  int
+}
+
 fn collect_pdf_support_refs(refs []int, object_map map[int]PdfObject, excluded map[int]bool, mut seen map[int]bool, mut out []PdfObject) {
 	for id in refs {
 		if id in excluded || id in seen {
@@ -427,22 +432,44 @@ fn pdf_reference_at(body string, start int) ?PdfRef {
 fn pdf_name_value(body string, key string, value string) bool {
 	mut offset := 0
 	for offset < body.len {
-		rel := body[offset..].index(key) or { return false }
-		start := offset + rel
-		after_key := start + key.len
-		if after_key < body.len && is_pdf_name_char(body[after_key]) {
-			offset = after_key
+		name := pdf_name_token_at(body, offset) or {
+			offset++
 			continue
 		}
-		value_start := skip_pdf_space(body, after_key)
-		value_end := value_start + value.len
-		if value_end <= body.len && body[value_start..value_end] == value
-			&& (value_end == body.len || !is_pdf_name_char(body[value_end])) {
-			return true
+		if name.text == key {
+			value_start := skip_pdf_space(body, name.end)
+			if next := pdf_name_token_at(body, value_start) {
+				if next.text == value {
+					return true
+				}
+			}
 		}
-		offset = after_key
+		offset = name.end
 	}
 	return false
+}
+
+fn pdf_name_token_at(body string, start int) ?PdfName {
+	if start >= body.len || body[start] != `/` {
+		return none
+	}
+	mut out := []u8{cap: body.len - start}
+	out << `/`
+	mut i := start + 1
+	for i < body.len && !is_pdf_delimiter(body[i]) {
+		if body[i] == `#` && i + 2 < body.len && is_pdf_hex_digit(body[i + 1])
+			&& is_pdf_hex_digit(body[i + 2]) {
+			out << u8(pdf_hex_value(body[i + 1]) * 16 + pdf_hex_value(body[i + 2]))
+			i += 3
+			continue
+		}
+		out << body[i]
+		i++
+	}
+	return PdfName{
+		text: out.bytestr()
+		end:  i
+	}
 }
 
 fn pdf_stream_marker_index(body string) ?int {
@@ -478,6 +505,20 @@ fn is_pdf_delimiter(ch u8) bool {
 
 fn is_pdf_digit(ch u8) bool {
 	return ch >= `0` && ch <= `9`
+}
+
+fn is_pdf_hex_digit(ch u8) bool {
+	return is_pdf_digit(ch) || (ch >= `a` && ch <= `f`) || (ch >= `A` && ch <= `F`)
+}
+
+fn pdf_hex_value(ch u8) int {
+	if ch >= `0` && ch <= `9` {
+		return int(ch - `0`)
+	}
+	if ch >= `a` && ch <= `f` {
+		return int(ch - `a`) + 10
+	}
+	return int(ch - `A`) + 10
 }
 
 fn is_pdf_uint_text(value string) bool {
