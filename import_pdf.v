@@ -126,10 +126,51 @@ fn pdf_object_body_end(source string, body_start int) ?int {
 		end_rel := source[scan..].index('endobj') or { return none }
 		end_at := scan + end_rel
 		stream_marker := pdf_next_stream_marker_before(source, scan, end_at) or { return end_at }
+		if stream_length := pdf_direct_stream_length(source[body_start..stream_marker.start]) {
+			if stream_end := pdf_stream_end_from_direct_length(source, stream_marker.end,
+				stream_length)
+			{
+				scan = stream_end
+				continue
+			}
+		}
 		stream_end := source[stream_marker.end..].index('endstream') or { return end_at }
 		scan = stream_marker.end + stream_end + 'endstream'.len
 	}
 	return none
+}
+
+fn pdf_direct_stream_length(object_header string) ?int {
+	start := pdf_key_index(object_header, '/Length') or { return none }
+	value_start := skip_pdf_space(object_header, start + '/Length'.len)
+	mut value_end := value_start
+	for value_end < object_header.len && is_pdf_digit(object_header[value_end]) {
+		value_end++
+	}
+	if value_end <= value_start {
+		return none
+	}
+	after_value := skip_pdf_space(object_header, value_end)
+	if after_value < object_header.len && is_pdf_digit(object_header[after_value]) {
+		return none
+	}
+	return object_header[value_start..value_end].int()
+}
+
+fn pdf_stream_end_from_direct_length(source string, stream_data_start int, length int) ?int {
+	if length < 0 {
+		return none
+	}
+	data_end := stream_data_start + length
+	if data_end > source.len {
+		return none
+	}
+	endstream_start := skip_pdf_space(source, data_end)
+	endstream_end := endstream_start + 'endstream'.len
+	if endstream_end > source.len || source[endstream_start..endstream_end] != 'endstream' {
+		return none
+	}
+	return endstream_end
 }
 
 struct PdfMarker {
