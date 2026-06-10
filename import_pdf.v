@@ -10,11 +10,12 @@ pub fn (mut doc Document) add_pdf_pages_from_bytes(bytes []u8) !int {
 	excluded := pdf_import_excluded_objects(objects)
 	mut imported := 0
 	for object in ordered_pdf_page_objects(objects, object_map) {
-		support_objects := pdf_page_support_objects(object.body, object_map, excluded)
+		page_body := pdf_page_body_with_inherited_attrs(object.body, object_map)
+		support_objects := pdf_page_support_objects(page_body, object_map, excluded)
 		doc.pages << PdfPage{
 			kind:          'raw_pdf'
 			raw_page_id:   object.id
-			raw_page_body: object.body
+			raw_page_body: page_body
 			raw_objects:   support_objects.clone()
 		}
 		imported++
@@ -148,6 +149,58 @@ fn pdf_page_support_objects(page_body string, object_map map[int]PdfObject, excl
 	return out
 }
 
+fn pdf_page_body_with_inherited_attrs(body string, object_map map[int]PdfObject) string {
+	inherited := pdf_inherited_page_attrs(body, object_map)
+	if inherited.len == 0 {
+		return body
+	}
+	mut additions := []string{}
+	for key in pdf_inherited_page_keys() {
+		if _ := pdf_key_index(body, key) {
+			continue
+		}
+		if value := inherited[key] {
+			additions << '${key} ${value}'
+		}
+	}
+	if additions.len == 0 {
+		return body
+	}
+	clean := body.trim_space()
+	if clean.starts_with('<<') {
+		return '<< ${additions.join(' ')} ${clean[2..].trim_space()}'
+	}
+	return '${additions.join(' ')} ${body}'
+}
+
+fn pdf_inherited_page_attrs(body string, object_map map[int]PdfObject) map[string]string {
+	mut inherited := map[string]string{}
+	mut current_body := body
+	mut seen := map[int]bool{}
+	for {
+		parent_id := pdf_ref_value(current_body, '/Parent') or { break }
+		if parent_id in seen {
+			break
+		}
+		parent := object_map[parent_id] or { break }
+		seen[parent_id] = true
+		for key in pdf_inherited_page_keys() {
+			if key in inherited {
+				continue
+			}
+			if value := pdf_value_for_key(parent.body, key) {
+				inherited[key] = value
+			}
+		}
+		current_body = parent.body
+	}
+	return inherited
+}
+
+fn pdf_inherited_page_keys() []string {
+	return ['/Resources', '/MediaBox', '/CropBox', '/Rotate']
+}
+
 fn is_pdf_catalog_object(body string) bool {
 	return pdf_name_value(body, '/Type', '/Catalog')
 }
@@ -174,6 +227,75 @@ fn pdf_kids_refs(body string) []int {
 	array_end_rel := body[absolute_start..].index(']') or { return []int{} }
 	array_body := body[absolute_start..absolute_start + array_end_rel]
 	return pdf_ref_ids(array_body)
+}
+
+fn pdf_value_for_key(body string, key string) ?string {
+	start := pdf_key_index(body, key) or { return none }
+	value_start := skip_pdf_space(body, start + key.len)
+	value_end := pdf_value_end(body, value_start)
+	if value_end <= value_start {
+		return none
+	}
+	return body[value_start..value_end].trim_space()
+}
+
+fn pdf_value_end(body string, start int) int {
+	if start >= body.len {
+		return start
+	}
+	if pdf_ref := pdf_reference_at(body, start) {
+		return pdf_ref.end
+	}
+	if start + 1 < body.len && body[start] == `<` && body[start + 1] == `<` {
+		return pdf_balanced_dict_end(body, start)
+	}
+	if body[start] == `[` {
+		return pdf_balanced_array_end(body, start)
+	}
+	mut i := start
+	for i < body.len && !is_pdf_delimiter(body[i]) {
+		i++
+	}
+	return i
+}
+
+fn pdf_balanced_dict_end(body string, start int) int {
+	mut depth := 0
+	mut i := start
+	for i + 1 < body.len {
+		if body[i] == `<` && body[i + 1] == `<` {
+			depth++
+			i += 2
+			continue
+		}
+		if body[i] == `>` && body[i + 1] == `>` {
+			depth--
+			i += 2
+			if depth <= 0 {
+				return i
+			}
+			continue
+		}
+		i++
+	}
+	return body.len
+}
+
+fn pdf_balanced_array_end(body string, start int) int {
+	mut depth := 0
+	mut i := start
+	for i < body.len {
+		if body[i] == `[` {
+			depth++
+		} else if body[i] == `]` {
+			depth--
+			if depth <= 0 {
+				return i + 1
+			}
+		}
+		i++
+	}
+	return body.len
 }
 
 fn pdf_key_index(body string, key string) ?int {
@@ -346,6 +468,10 @@ fn skip_pdf_space(body string, start int) int {
 fn is_pdf_name_char(ch u8) bool {
 	return (ch >= `a` && ch <= `z`) || (ch >= `A` && ch <= `Z`)
 		|| (ch >= `0` && ch <= `9`) || ch in [`_`, `-`]
+}
+
+fn is_pdf_delimiter(ch u8) bool {
+	return ch in [` `, `\t`, `\r`, `\n`, 0x0c, 0x00, `/`, `[`, `]`, `<`, `>`, `(`, `)`]
 }
 
 fn is_pdf_digit(ch u8) bool {

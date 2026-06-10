@@ -62,3 +62,30 @@ fn test_imports_pages_when_objects_start_after_carriage_return() {
 	assert body.contains('udhr page needle')
 	assert body.contains('/Count 1')
 }
+
+fn test_imports_page_tree_inherited_page_attributes() {
+	source := '%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 /Resources 7 0 R /MediaBox [0 0 300 400] /CropBox [10 20 290 380] /Rotate 90 >>\nendobj\n3 0 obj\n<< /Type /Page /Parent 2 0 R /Contents 5 0 R >>\nendobj\n5 0 obj\n<< /Length 30 >>\nstream\nBT (inherited attr needle) Tj ET\nendstream\nendobj\n7 0 obj\n<< /Font << /F1 8 0 R >> >>\nendobj\n8 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\ntrailer\n<< /Root 1 0 R /Size 9 >>\nstartxref\n0\n%%EOF\n'
+	mut doc := new_document()
+	imported := doc.add_pdf_pages_from_bytes(source.bytes())!
+	body := doc.render()
+	assert imported == 1
+	assert body.contains('inherited attr needle')
+	assert body.contains('/MediaBox [0 0 300 400]')
+	assert body.contains('/CropBox [10 20 290 380]')
+	assert body.contains('/Rotate 90')
+	assert body.contains('/BaseFont /Helvetica')
+}
+
+fn test_imported_page_attributes_override_page_tree_inheritance() {
+	source := '%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 /Resources 7 0 R /MediaBox [0 0 300 400] /CropBox [10 20 290 380] /Rotate 90 >>\nendobj\n3 0 obj\n<< /Type /Page /Parent 2 0 R /Resources 9 0 R /MediaBox [0 0 500 600] /Rotate 180 /Contents 5 0 R >>\nendobj\n5 0 obj\n<< /Length 30 >>\nstream\nBT (override attr needle) Tj ET\nendstream\nendobj\n7 0 obj\n<< /Font << /Old 8 0 R >> >>\nendobj\n8 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>\nendobj\n9 0 obj\n<< /Font << /F1 10 0 R >> >>\nendobj\n10 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\ntrailer\n<< /Root 1 0 R /Size 11 >>\nstartxref\n0\n%%EOF\n'
+	mut doc := new_document()
+	imported := doc.add_pdf_pages_from_bytes(source.bytes())!
+	body := doc.render()
+	assert imported == 1
+	assert body.contains('override attr needle')
+	assert body.contains('/MediaBox [0 0 500 600]')
+	assert body.contains('/CropBox [10 20 290 380]')
+	assert body.contains('/Rotate 180')
+	assert body.contains('/BaseFont /Helvetica')
+	assert !body.contains('/BaseFont /Courier')
+}
