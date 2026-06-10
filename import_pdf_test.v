@@ -116,6 +116,17 @@ fn test_imports_pdf_stream_using_length_when_delimiter_words_are_literal() {
 	assert body.contains('/Count 1')
 }
 
+fn test_imports_pdf_stream_using_indirect_length_when_delimiters_are_literal() {
+	data := 'BT (indirect length endstream endobj marker) Tj ET'
+	source := '%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] /Resources << >> /Contents 5 0 R >>\nendobj\n5 0 obj\n<< /Length 9 0 R >>\nstream\n${data}\nendstream\nendobj\n9 0 obj\n${data.len}\nendobj\ntrailer\n<< /Root 1 0 R /Size 10 >>\nstartxref\n0\n%%EOF\n'
+	mut doc := new_document()
+	imported := doc.add_pdf_pages_from_bytes(source.bytes())!
+	body := doc.render()
+	assert imported == 1
+	assert body.contains(data)
+	assert body.contains('/Count 1')
+}
+
 fn test_import_removes_page_parent_ref_split_by_newline() {
 	source := '%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 11 0 R >>\nendobj\n11 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n3 0 obj\n<< /Type /Page /Parent\n11 0 R /MediaBox [0 0 200 200] /Resources << >> /Contents 5 0 R >>\nendobj\n5 0 obj\n<< /Length 34 >>\nstream\nBT (newline parent export page) Tj ET\nendstream\nendobj\ntrailer\n<< /Root 1 0 R /Size 12 >>\nstartxref\n0\n%%EOF\n'
 	mut doc := new_document()
