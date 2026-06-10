@@ -2,7 +2,7 @@ module vpdf_compose
 
 pub fn (mut doc Document) add_pdf_pages_from_bytes(bytes []u8) !int {
 	source := bytes.bytestr()
-	objects := parse_pdf_objects(source)
+	objects := expand_pdf_object_streams(parse_pdf_objects(source))
 	if objects.len == 0 {
 		return error('pdf objects not found')
 	}
