@@ -100,8 +100,8 @@ fn parse_pdf_objects(source string) []PdfObject {
 		marker := offset + rel
 		line_start := pdf_object_header_start(source, marker)
 		header := source[line_start..marker].trim_space()
-		parts := header.split(' ')
-		if parts.len < 2 || parts[1] != '0' {
+		parts := header.fields()
+		if parts.len < 2 || !is_pdf_uint_text(parts[0]) || !is_pdf_uint_text(parts[1]) {
 			offset = marker + 4
 			continue
 		}
@@ -414,7 +414,7 @@ fn pdf_reference_at(body string, start int) ?PdfRef {
 	for i < body.len && is_pdf_digit(body[i]) {
 		i++
 	}
-	if body[gen_start..i].int() != 0 {
+	if i <= gen_start {
 		return none
 	}
 	i = skip_pdf_space(body, i)
@@ -476,4 +476,16 @@ fn is_pdf_delimiter(ch u8) bool {
 
 fn is_pdf_digit(ch u8) bool {
 	return ch >= `0` && ch <= `9`
+}
+
+fn is_pdf_uint_text(value string) bool {
+	if value == '' {
+		return false
+	}
+	for ch in value.bytes() {
+		if !is_pdf_digit(ch) {
+			return false
+		}
+	}
+	return true
 }

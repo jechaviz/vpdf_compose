@@ -65,6 +65,16 @@ fn test_imports_pages_when_objects_start_after_carriage_return() {
 	assert body.contains('/Count 1')
 }
 
+fn test_imports_nonzero_generation_content_reference() {
+	source := '%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] /Resources << >> /Contents 5 2 R >>\nendobj\n5 2 obj\n<< /Length 34 >>\nstream\nBT (nonzero generation page) Tj ET\nendstream\nendobj\ntrailer\n<< /Root 1 0 R /Size 6 >>\nstartxref\n0\n%%EOF\n'
+	mut doc := new_document()
+	imported := doc.add_pdf_pages_from_bytes(source.bytes())!
+	body := doc.render()
+	assert imported == 1
+	assert body.contains('nonzero generation page')
+	assert !body.contains('/Contents 5 2 R')
+}
+
 fn test_imports_page_tree_inherited_page_attributes() {
 	source := '%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 /Resources 7 0 R /MediaBox [0 0 300 400] /CropBox [10 20 290 380] /Rotate 90 >>\nendobj\n3 0 obj\n<< /Type /Page /Parent 2 0 R /Contents 5 0 R >>\nendobj\n5 0 obj\n<< /Length 30 >>\nstream\nBT (inherited attr needle) Tj ET\nendstream\nendobj\n7 0 obj\n<< /Font << /F1 8 0 R >> >>\nendobj\n8 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\ntrailer\n<< /Root 1 0 R /Size 9 >>\nstartxref\n0\n%%EOF\n'
 	mut doc := new_document()
