@@ -107,17 +107,56 @@ fn parse_pdf_objects(source string) []PdfObject {
 		}
 		id := parts[0].int()
 		body_start := marker + ' obj'.len
-		end_rel := source[body_start..].index('endobj') or { break }
-		body := source[body_start..body_start + end_rel].trim(' \r\n')
+		body_end := pdf_object_body_end(source, body_start) or { break }
+		body := source[body_start..body_end].trim(' \r\n')
 		if id > 0 {
 			out << PdfObject{
 				id:   id
 				body: body
 			}
 		}
-		offset = body_start + end_rel + 'endobj'.len
+		offset = body_end + 'endobj'.len
 	}
 	return out
+}
+
+fn pdf_object_body_end(source string, body_start int) ?int {
+	mut scan := body_start
+	for scan < source.len {
+		end_rel := source[scan..].index('endobj') or { return none }
+		end_at := scan + end_rel
+		stream_marker := pdf_next_stream_marker_before(source, scan, end_at) or { return end_at }
+		stream_end := source[stream_marker.end..].index('endstream') or { return end_at }
+		scan = stream_marker.end + stream_end + 'endstream'.len
+	}
+	return none
+}
+
+struct PdfMarker {
+	start int
+	end   int
+}
+
+fn pdf_next_stream_marker_before(source string, start int, before int) ?PdfMarker {
+	mut found := PdfMarker{
+		start: source.len
+		end:   source.len
+	}
+	for marker in pdf_stream_markers() {
+		rel := source[start..].index(marker) or { continue }
+		marker_start := start + rel
+		if marker_start >= before || marker_start >= found.start {
+			continue
+		}
+		found = PdfMarker{
+			start: marker_start
+			end:   marker_start + marker.len
+		}
+	}
+	if found.start == source.len {
+		return none
+	}
+	return found
 }
 
 fn pdf_object_header_start(source string, marker int) int {
@@ -449,12 +488,17 @@ fn pdf_name_value(body string, key string, value string) bool {
 }
 
 fn pdf_stream_marker_index(body string) ?int {
-	for marker in ['\nstream\n', '\r\nstream\r\n', '\nstream\r\n', '\r\nstream\n'] {
+	for marker in pdf_stream_markers() {
 		if index := body.index(marker) {
 			return index
 		}
 	}
 	return none
+}
+
+fn pdf_stream_markers() []string {
+	return ['\r\nstream\r\n', '\r\nstream\n', '\nstream\r\n', '\nstream\n', '\rstream\r',
+		'\rstream\n', '\nstream\r']
 }
 
 fn skip_pdf_space(body string, start int) int {
