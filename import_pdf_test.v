@@ -166,22 +166,37 @@ fn test_imported_page_attributes_override_page_tree_inheritance() {
 }
 
 fn test_imports_page_object_from_flate_object_stream() {
-	page := '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] /Resources 8 0 R /Contents 6 0 R >>'
-	resources := '<< /Font << /F1 9 0 R >> >>'
-	header := '5 0 8 ${page.len} '
-	object_stream := header + page + resources
-	compressed := deflate.compress_zlib(object_stream.bytes())!
-	mut source :=
-		'%PDF-1.5\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [5 0 R] /Count 1 >>\nendobj\n6 0 obj\n<< /Length 29 >>\nstream\nBT (object stream page) Tj ET\nendstream\nendobj\n7 0 obj\n<< /Type /ObjStm /N 2 /First ${header.len} /Length ${compressed.len} /Filter /FlateDecode >>\nstream\n'.bytes()
-	append_import_pdf_test_bytes(mut source, compressed)
-	append_import_pdf_test_bytes(mut source,
-		'\nendstream\nendobj\n9 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\ntrailer\n<< /Root 1 0 R /Size 10 >>\nstartxref\n0\n%%EOF\n'.bytes())
+	source := object_stream_pdf_for_import_test('\nstream\n', '\nendstream\n')!
 	mut doc := new_document()
 	imported := doc.add_pdf_pages_from_bytes(source)!
 	body := doc.render()
 	assert imported == 1
 	assert body.contains('object stream page')
 	assert body.contains('/BaseFont /Helvetica')
+}
+
+fn test_imports_page_object_from_cr_only_flate_object_stream() {
+	source := object_stream_pdf_for_import_test('\rstream\r', '\rendstream\r')!
+	mut doc := new_document()
+	imported := doc.add_pdf_pages_from_bytes(source)!
+	body := doc.render()
+	assert imported == 1
+	assert body.contains('object stream page')
+	assert body.contains('/BaseFont /Helvetica')
+}
+
+fn object_stream_pdf_for_import_test(stream_marker string, endstream_marker string) ![]u8 {
+	page := '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] /Resources 8 0 R /Contents 6 0 R >>'
+	resources := '<< /Font << /F1 9 0 R >> >>'
+	header := '5 0 8 ${page.len} '
+	object_stream := header + page + resources
+	compressed := deflate.compress_zlib(object_stream.bytes())!
+	mut source :=
+		'%PDF-1.5\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [5 0 R] /Count 1 >>\nendobj\n6 0 obj\n<< /Length 29 >>\nstream\nBT (object stream page) Tj ET\nendstream\nendobj\n7 0 obj\n<< /Type /ObjStm /N 2 /First ${header.len} /Length ${compressed.len} /Filter /FlateDecode >>${stream_marker}'.bytes()
+	append_import_pdf_test_bytes(mut source, compressed)
+	append_import_pdf_test_bytes(mut source,
+		'${endstream_marker}endobj\n9 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\ntrailer\n<< /Root 1 0 R /Size 10 >>\nstartxref\n0\n%%EOF\n'.bytes())
+	return source
 }
 
 fn append_import_pdf_test_bytes(mut dst []u8, src []u8) {

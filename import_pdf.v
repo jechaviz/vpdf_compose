@@ -79,13 +79,12 @@ fn pdf_latest_trailer_root_id(source string) ?int {
 	mut root_id := 0
 	mut offset := 0
 	for offset < source.len {
-		rel := source[offset..].index('trailer') or { break }
-		trailer_at := offset + rel + 'trailer'.len
-		dict_rel := source[trailer_at..].index('<<') or {
+		trailer_marker := source.index_after('trailer', offset) or { break }
+		trailer_at := trailer_marker + 'trailer'.len
+		dict_start := source.index_after('<<', trailer_at) or {
 			offset = trailer_at
 			continue
 		}
-		dict_start := trailer_at + dict_rel
 		dict_end := pdf_balanced_dict_end(source, dict_start)
 		if dict_end <= dict_start || dict_end > source.len {
 			offset = trailer_at

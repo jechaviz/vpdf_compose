@@ -4,8 +4,7 @@ fn parse_pdf_objects(source string) []PdfObject {
 	mut out := []PdfObject{}
 	mut offset := 0
 	for offset < source.len {
-		rel := source[offset..].index(' obj') or { break }
-		marker := offset + rel
+		marker := source.index_after(' obj', offset) or { break }
 		line_start := pdf_object_header_start(source, marker)
 		header := source[line_start..marker].trim_space()
 		parts := header.fields()
@@ -31,8 +30,7 @@ fn parse_pdf_objects(source string) []PdfObject {
 fn pdf_object_body_end(source string, body_start int) ?int {
 	mut scan := body_start
 	for scan < source.len {
-		end_rel := source[scan..].index('endobj') or { return none }
-		end_at := scan + end_rel
+		end_at := source.index_after('endobj', scan) or { return none }
 		stream_marker := pdf_next_stream_marker_before(source, scan, end_at) or { return end_at }
 		if stream_length := pdf_stream_length(source, source[body_start..stream_marker.start]) {
 			if stream_end := pdf_stream_end_from_direct_length(source, stream_marker.end,
@@ -42,8 +40,8 @@ fn pdf_object_body_end(source string, body_start int) ?int {
 				continue
 			}
 		}
-		stream_end := source[stream_marker.end..].index('endstream') or { return end_at }
-		scan = stream_marker.end + stream_end + 'endstream'.len
+		stream_end := source.index_after('endstream', stream_marker.end) or { return end_at }
+		scan = stream_end + 'endstream'.len
 	}
 	return none
 }
@@ -116,16 +114,15 @@ fn pdf_length_ref(object_header string) ?PdfLengthRef {
 fn pdf_plain_object_body(source string, id int, generation int) ?string {
 	mut offset := 0
 	for offset < source.len {
-		rel := source[offset..].index(' obj') or { return none }
-		marker := offset + rel
+		marker := source.index_after(' obj', offset) or { return none }
 		line_start := pdf_object_header_start(source, marker)
 		header := source[line_start..marker].trim_space()
 		parts := header.fields()
 		if parts.len >= 2 && is_pdf_uint_text(parts[0]) && is_pdf_uint_text(parts[1])
 			&& parts[0].int() == id && parts[1].int() == generation {
 			body_start := marker + ' obj'.len
-			end_rel := source[body_start..].index('endobj') or { return none }
-			return source[body_start..body_start + end_rel].trim_space()
+			body_end := source.index_after('endobj', body_start) or { return none }
+			return source[body_start..body_end].trim_space()
 		}
 		offset = marker + 4
 	}
@@ -167,8 +164,7 @@ fn pdf_next_stream_marker_before(source string, start int, before int) ?PdfMarke
 		end:   source.len
 	}
 	for marker in pdf_stream_markers() {
-		rel := source[start..].index(marker) or { continue }
-		marker_start := start + rel
+		marker_start := source.index_after(marker, start) or { continue }
 		if marker_start >= before || marker_start >= found.start {
 			continue
 		}

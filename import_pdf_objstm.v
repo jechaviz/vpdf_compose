@@ -107,7 +107,7 @@ fn pdf_object_stream_body_bytes(body string) ?[]u8 {
 }
 
 fn pdf_object_stream_body_start(body string) ?int {
-	for marker in ['\nstream\n', '\r\nstream\r\n', '\nstream\r\n', '\r\nstream\n'] {
+	for marker in pdf_stream_markers() {
 		if index := body.index(marker) {
 			return index + marker.len
 		}
