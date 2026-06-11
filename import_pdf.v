@@ -64,6 +64,13 @@ fn pdf_catalog_object(source string, objects []PdfObject, object_map map[int]Pdf
 			}
 		}
 	}
+	if root_id := pdf_latest_xref_stream_root_id(objects) {
+		if object := object_map[root_id] {
+			if is_pdf_catalog_object(object.body) {
+				return object
+			}
+		}
+	}
 	mut i := objects.len
 	for i > 0 {
 		i--
@@ -99,6 +106,21 @@ fn pdf_latest_trailer_root_id(source string) ?int {
 		return none
 	}
 	return root_id
+}
+
+fn pdf_latest_xref_stream_root_id(objects []PdfObject) ?int {
+	mut i := objects.len
+	for i > 0 {
+		i--
+		body := pdf_reference_scan_body(objects[i].body)
+		if !pdf_name_value(body, '/Type', '/XRef') {
+			continue
+		}
+		if id := pdf_ref_value(body, '/Root') {
+			return id
+		}
+	}
+	return none
 }
 
 fn pdf_collect_page_tree_ids(id int, object_map map[int]PdfObject, mut seen map[int]bool) []int {

@@ -64,6 +64,16 @@ fn test_imports_incremental_update_latest_catalog_revision() {
 	assert !body.contains('stale incremental page')
 }
 
+fn test_import_prefers_xref_stream_root_catalog() {
+	source := xref_stream_root_pdf_for_import_test()
+	mut doc := new_document()
+	imported := doc.add_pdf_pages_from_bytes(source.bytes())!
+	body := doc.render()
+	assert imported == 1
+	assert body.contains('xref stream root page')
+	assert !body.contains('wrong orphan page')
+}
+
 fn test_imports_pages_with_hex_escaped_type_names() {
 	content := 'BT (escaped type page) Tj ET'
 	source := '%PDF-1.4\n1 0 obj\n<< /Type /C#61talog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /P#61ges /Kids [3 0 R] /Count 1 >>\nendobj\n3 0 obj\n<< /Type /P#61ge /Parent 2 0 R /MediaBox [0 0 200 200] /Resources << >> /Contents 4 0 R >>\nendobj\n4 0 obj\n<< /Length ${content.len} >>\nstream\n${content}\nendstream\nendobj\ntrailer\n<< /Root 1 0 R /Size 5 >>\nstartxref\n0\n%%EOF\n'
@@ -209,4 +219,10 @@ fn incremental_catalog_pdf_for_import_test() string {
 	stale := 'BT (stale incremental page) Tj ET'
 	current := 'BT (current incremental page) Tj ET'
 	return '%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] /Resources << >> /Contents 4 0 R >>\nendobj\n4 0 obj\n<< /Length ${stale.len} >>\nstream\n${stale}\nendstream\nendobj\nxref\n0 5\n0000000000 65535 f \ntrailer\n<< /Root 1 0 R /Size 5 >>\nstartxref\n0\n1 0 obj\n<< /Type /Catalog /Pages 5 0 R >>\nendobj\n5 0 obj\n<< /Type /Pages /Kids [6 0 R] /Count 1 >>\nendobj\n6 0 obj\n<< /Type /Page /Parent 5 0 R /MediaBox [0 0 200 200] /Resources << >> /Contents 7 0 R >>\nendobj\n7 0 obj\n<< /Length ${current.len} >>\nstream\n${current}\nendstream\nendobj\nxref\n0 8\n0000000000 65535 f \ntrailer\n<< /Root 1 0 R /Size 8 /Prev 0 >>\nstartxref\n1\n%%EOF\n'
+}
+
+fn xref_stream_root_pdf_for_import_test() string {
+	correct := 'BT (xref stream root page) Tj ET'
+	wrong := 'BT (wrong orphan page) Tj ET'
+	return '%PDF-1.5\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] /Resources << >> /Contents 4 0 R >>\nendobj\n4 0 obj\n<< /Length ${correct.len} >>\nstream\n${correct}\nendstream\nendobj\n8 0 obj\n<< /Type /Catalog /Pages 6 0 R >>\nendobj\n6 0 obj\n<< /Type /Pages /Kids [7 0 R] /Count 1 >>\nendobj\n7 0 obj\n<< /Type /Page /Parent 6 0 R /MediaBox [0 0 200 200] /Resources << >> /Contents 9 0 R >>\nendobj\n9 0 obj\n<< /Length ${wrong.len} >>\nstream\n${wrong}\nendstream\nendobj\n10 0 obj\n<< /Type /XRef /Root 1 0 R /Size 11 /W [1 2 1] /Length 0 >>\nstream\n\nendstream\nendobj\nstartxref\n0\n%%EOF\n'
 }
