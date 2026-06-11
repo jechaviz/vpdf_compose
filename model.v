@@ -10,7 +10,17 @@ pub:
 	bold bool
 }
 
+pub struct TextPage {
+pub:
+	lines []TextLine
+}
+
 pub struct TextPageOptions {
+pub:
+	margin_points int = 28
+}
+
+pub struct TextLayoutOptions {
 pub:
 	margin_points int = 28
 }

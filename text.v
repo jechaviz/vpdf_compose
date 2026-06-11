@@ -52,22 +52,8 @@ fn line_height(size int) int {
 	return 15
 }
 
-fn pdf_text_safe(value string) string {
-	mut out := []u8{}
-	for ch in value.bytes() {
-		if ch == `\n` || ch == `\r` || ch == `\t` {
-			out << ` `
-		} else if ch >= 32 && ch <= 126 {
-			out << ch
-		} else {
-			out << `?`
-		}
-	}
-	return out.bytestr().trim_space()
-}
-
 fn pdf_escape(value string) string {
-	clean := pdf_text_safe(value)
+	clean := safe_text(value)
 	mut out := ''
 	for ch in clean.bytes() {
 		if ch == `\\` || ch == `(` || ch == `)` {
